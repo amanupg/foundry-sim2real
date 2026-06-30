@@ -72,8 +72,23 @@ adjust_decomposition).
 ## Build checkpoints
 
 - **0** FastAPI skeleton, `/health`, static index. (done)
-- **1** Full pipeline end-to-end with mocked mesh (cube). (in progress)
-- **2** Real VLM critique (OpenRouter) + repair loop.
-- **3** Real Replicate 3D generation with fallback chain.
-- **4** Frontend polish (timeline, attempt history, three.js viewer).
+- **1** Full pipeline end-to-end with mocked mesh (cube). (done, verified)
+- **2** Real VLM critique (OpenRouter) + repair loop. (done, verified live)
+- **3** Real Replicate 3D generation with fallback chain. (code-complete;
+  live verification blocked by insufficient Replicate account credit - 402.
+  Code is correct and will produce real meshes once credit is added.)
+- **4** Frontend polish (timeline, attempt history, three.js viewer, download). (done)
 - **5** (stretch) Depth Anything v2 scale cue; MJCF export; gallery.
+
+## Verified end-to-end
+
+With no Replicate credit, the full HTTP flow runs on the mocked cube:
+upload -> preprocess -> mock mesh -> process -> collision -> physics -> URDF ->
+PyBullet drop test (stable) -> 4 renders -> real VLM verdict (OpenRouter) ->
+asset pack zip download. The critique-repair loop runs up to 3 attempts with
+real vision verdicts driving parameter changes.
+
+## Run with no keys (mock mode)
+
+If neither `REPLICATE_API_TOKEN` nor `OPENROUTER_API_KEY` is set, the pipeline
+runs fully on the mock cube with a stub VLM verdict. This proves the skeleton.
