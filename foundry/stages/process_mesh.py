@@ -54,9 +54,10 @@ def process_mesh(raw_mesh_path: Path, run_dir: Path, repair_aggressive: bool = F
         ext = mesh.bounding_box.extents
         order = np.argsort(ext)[::-1]  # longest first
         if list(order) != [0, 1, 2]:
-            # Build rotation that maps current axes to longest-first order.
-            R = np.eye(3)[order]
-            mesh.apply_rotation(R)
+            # Build 4x4 homogeneous rotation that maps current axes to longest-first order.
+            R = np.eye(4)
+            R[:3, :3] = np.eye(3)[order]
+            mesh.apply_transform(R)
     except Exception as e:
         log.warning("process_mesh: orientation normalize failed (%s)", e)
 

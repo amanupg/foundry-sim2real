@@ -40,13 +40,28 @@ def export_urdf(processed_mesh_path: Path, collision_path: Path, run_dir: Path,
     meshes_dir = pack_dir / "meshes"
     meshes_dir.mkdir(exist_ok=True)
 
-    # Copy visual mesh.
+    # Copy visual mesh (glb for three.js viewer, obj for pybullet).
     visual_glb = meshes_dir / "visual.glb"
     shutil.copy2(processed_mesh_path, visual_glb)
+    visual_obj = meshes_dir / "visual.obj"
+    try:
+        mesh_v = trimesh.load(processed_mesh_path, force="mesh")
+        mesh_v.export(visual_obj)
+    except Exception as e:
+        log.warning("export_urdf: visual.obj export failed (%s)", e)
+        mesh_v = trimesh.load(processed_mesh_path, force="mesh")
+        mesh_v.export(visual_obj)
 
-    # Copy collision mesh(es).
-    collision_glb = meshes_dir / "collision.glb"
-    shutil.copy2(collision_path, collision_glb)
+    # Copy collision mesh(es) as obj (pybullet needs obj/stl, not glb).
+    collision_obj = meshes_dir / "collision.obj"
+    try:
+        mesh_c = trimesh.load(collision_path, force="mesh")
+        mesh_c.export(collision_obj)
+    except Exception as e:
+        log.warning("export_urdf: collision.obj export failed (%s)", e)
+        # Fallback: convex hull of visual.
+        mesh_c = trimesh.load(processed_mesh_path, force="mesh").convex_hull
+        mesh_c.export(collision_obj)
 
     inertia_str = _format_inertia(np.asarray(inertia, dtype=float))
 
@@ -56,13 +71,16 @@ def export_urdf(processed_mesh_path: Path, collision_path: Path, run_dir: Path,
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/visual.glb"/>
+        <mesh filename="meshes/visual.obj"/>
       </geometry>
+      <material name="foundry_orange">
+        <color rgba="0.85 0.45 0.15 1.0"/>
+      </material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/collision.glb"/>
+        <mesh filename="meshes/collision.obj"/>
       </geometry>
     </collision>
     <inertial>

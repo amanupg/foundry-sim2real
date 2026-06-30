@@ -30,8 +30,8 @@ OPENROUTER_API_KEY: str | None = _get("OPENROUTER_API_KEY", "ANTHROPIC_API_KEY")
 
 # --- VLM (OpenRouter) -------------------------------------------------------
 # Deviation from original spec (Anthropic): using OpenRouter per user request.
-VLM_MODEL: str = _get("VLM_MODEL") or "meta-llama/llama-3.2-90b-vision-instruct"
-VLM_FALLBACK_MODEL: str = _get("VLM_FALLBACK_MODEL") or "meta-llama/llama-3.2-11b-vision-instruct"
+VLM_MODEL: str = _get("VLM_MODEL") or "meta-llama/llama-3.2-11b-vision-instruct"
+VLM_FALLBACK_MODEL: str = _get("VLM_FALLBACK_MODEL") or "google/gemma-3-12b-it"
 OPENROUTER_BASE: str = "https://openrouter.ai/api/v1/chat/completions"
 
 # --- Pipeline tunables ------------------------------------------------------

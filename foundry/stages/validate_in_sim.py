@@ -24,22 +24,24 @@ def _render_pybullet(client_id, urdf_path: Path, run_dir: Path) -> list[Path]:
     """Render 4 views using PyBullet's offscreen TINY renderer (CPU, no GL)."""
     import pybullet as p
     renders: list[Path] = []
-    angles = [(0, -30), (90, -30), (180, -30), (270, -30)]
+    angles = [(0, -25), (90, -25), (180, -25), (270, -25)]
     for i, (yaw, pitch) in enumerate(angles):
         try:
             view = p.computeViewMatrixFromYawPitchRoll(
-                cameraTargetPosition=[0, 0, 0.05],
-                distance=0.6,
+                cameraTargetPosition=[0, 0, 0.08],
+                distance=0.35,
                 yaw=yaw,
                 pitch=pitch,
                 roll=0,
                 upAxisIndex=2,
+                physicsClientId=client_id,
             )
-            proj = p.getProjectionMatrix(
-                fov=45, aspect=1.0, nearVal=0.01, farVal=10.0
+            proj = p.computeProjectionMatrixFOV(
+                fov=50, aspect=1.0, nearVal=0.01, farVal=10.0
             )
             w, h, px, _, _ = p.getCameraImage(
-                256, 256, view, proj, renderer=p.ER_TINY_RENDERER
+                256, 256, view, proj, renderer=p.ER_TINY_RENDERER,
+                physicsClientId=client_id,
             )
             arr = np.array(px, dtype=np.uint8).reshape(h, w, 4)
             from PIL import Image
@@ -52,25 +54,36 @@ def _render_pybullet(client_id, urdf_path: Path, run_dir: Path) -> list[Path]:
 
 
 def _render_trimesh_fallback(processed_mesh_path: Path, run_dir: Path) -> list[Path]:
-    """Fallback: render the mesh with trimesh's built-in scene viewer (still PNG)."""
+    """Fallback: render simple projected silhouettes of the mesh with PIL (no GL)."""
     renders: list[Path] = []
     try:
         import trimesh
+        import numpy as np
+        from PIL import Image, ImageDraw
         mesh = trimesh.load(processed_mesh_path, force="mesh")
+        verts = np.array(mesh.vertices)
+        # Normalize verts to [-1, 1] for projection.
+        vmin, vmax = verts.min(axis=0), verts.max(axis=0)
+        span = (vmax - vmin).max() or 1.0
+        norm = (verts - (vmin + vmax) / 2.0) / (span / 2.0)
         angles = [(0, -30), (90, -30), (180, -30), (270, -30)]
         for i, (yaw, pitch) in enumerate(angles):
-            scene = trimesh.Scene(mesh)
-            scene.camera_transform = scene.camera.look_at(
-                mesh.bounds, rotation=np.radians([pitch, yaw, 0])
-            )
-            out = run_dir / "renders" / f"view_{i}.png"
             try:
-                png = scene.save_image(resolution=[256, 256])
-                out.write_bytes(png)
+                import math
+                cy, sy = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+                cp, sp = math.cos(math.radians(pitch)), math.sin(math.radians(pitch))
+                R = np.array([[cp, 0, sp], [sy * sp, cp, -sy * cp],
+                              [-cy * sp, sy, cy * cp]])
+                proj = norm @ R.T
+                img = Image.new("RGB", (256, 256), (11, 13, 18))
+                d = ImageDraw.Draw(img)
+                pts = [((p[0] * 0.4 + 0.5) * 256, (-p[1] * 0.4 + 0.5) * 256) for p in proj]
+                d.point(pts, fill=(140, 160, 200))
+                out = run_dir / "renders" / f"view_{i}.png"
+                img.save(out)
                 renders.append(out)
-            except Exception:
-                # Last resort: render depthless silhouette.
-                continue
+            except Exception as e:
+                log.warning("validate_in_sim: fallback render %d failed (%s)", i, e)
     except Exception as e:
         log.warning("validate_in_sim: trimesh render fallback failed (%s)", e)
     return renders
@@ -80,13 +93,15 @@ def validate_in_sim(urdf_path: Path, processed_mesh_path: Path, run_dir: Path,
                     frames: int = PYBULLET_FRAMES) -> tuple[dict, list[Path]]:
     log.info("validate_in_sim start (frames=%d)", frames)
     import pybullet as p
+    import pybullet_data
     client_id = p.connect(p.DIRECT)  # headless
+    plane_urdf = str(Path(pybullet_data.getDataPath()) / "plane.urdf")
     sim_report: dict = {"stable": False, "settle_time": None, "anomalies": []}
     renders: list[Path] = []
     try:
         p.setAdditionalSearchPath(str(urdf_path.parent), physicsClientId=client_id)
         p.setGravity(0, 0, -9.81, physicsClientId=client_id)
-        p.loadURDF("plane.urdf", physicsClientId=client_id)
+        p.loadURDF(plane_urdf, physicsClientId=client_id)
 
         # Load object URDF; spawn above ground.
         body = p.loadURDF(str(urdf_path), [0, 0, 0.3], physicsClientId=client_id)

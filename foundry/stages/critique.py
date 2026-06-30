@@ -57,6 +57,31 @@ def _b64_image(path: Path) -> str:
     return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
 
 
+def _composite_image(image_paths: list[Path]) -> bytes:
+    """Stitch multiple images into one composite PNG (grid) so models that
+    accept only a single image can still see all views."""
+    from PIL import Image
+    imgs = [Image.open(p).convert("RGB").resize((256, 256)) for p in image_paths if p and Path(p).exists()]
+    if not imgs:
+        return b""
+    if len(imgs) == 1:
+        import io
+        b = io.BytesIO(); imgs[0].save(b, format="PNG"); return b.getvalue()
+    # 2-column grid.
+    cols = 2
+    rows = (len(imgs) + cols - 1) // cols
+    canvas = Image.new("RGB", (cols * 256, rows * 256), (20, 20, 20))
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(canvas)
+    labels = ["ORIGINAL"] + [f"VIEW {i}" for i in range(len(imgs) - 1)]
+    for i, im in enumerate(imgs):
+        r, c = divmod(i, cols)
+        canvas.paste(im, (c * 256, r * 256))
+        d.text((c * 256 + 4, r * 256 + 4), labels[i] if i < len(labels) else "", fill=(255, 255, 255))
+    import io
+    b = io.BytesIO(); canvas.save(b, format="PNG"); return b.getvalue()
+
+
 def _strip_and_extract(text: str) -> dict | None:
     """Strip code fences, regex-extract the JSON object, parse."""
     if not text:
@@ -103,22 +128,17 @@ def _validate_verdict(obj: dict) -> dict:
     return v
 
 
-def _call_openrouter(images_b64: list[str], sim_report: dict) -> str | None:
-    """Call OpenRouter chat completions with vision. Returns raw text or None."""
+def _call_openrouter(composite_b64: str, sim_report: dict) -> str | None:
+    """Call OpenRouter chat completions with a single composite image. Returns raw text or None."""
     if not OPENROUTER_API_KEY:
         log.warning("critique: no OPENROUTER_API_KEY; soft-fail verdict")
         return None
 
-    content = [{"type": "text", "text": SYSTEM_PROMPT}]
-    content.append({
-        "type": "text",
-        "text": f"Physics sim report: {json.dumps(sim_report)}"
-    })
-    for i, img in enumerate(images_b64):
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": img}
-        })
+    content = [
+        {"type": "text", "text": SYSTEM_PROMPT},
+        {"type": "text", "text": f"Physics sim report: {json.dumps(sim_report)}"},
+        {"type": "image_url", "image_url": {"url": composite_b64}},
+    ]
 
     for model in (VLM_MODEL, VLM_FALLBACK_MODEL):
         try:
@@ -139,6 +159,9 @@ def _call_openrouter(images_b64: list[str], sim_report: dict) -> str | None:
             )
             resp.raise_for_status()
             data = resp.json()
+            if "choices" not in data or not data["choices"]:
+                log.warning("critique: %s returned no choices: %s", model, str(data)[:400])
+                continue
             text = data["choices"][0]["message"]["content"]
             log.info("critique: %s responded (%d chars)", model, len(text or ""))
             return text
@@ -161,20 +184,30 @@ def critique(original_clean_image_path: Path, render_paths: list[Path],
         v["geometry_defects"] = ["no_renders_and_no_vlm"]
         return v
 
-    images: list[str] = []
+    images: list[Path] = []
     # Always include the original clean image.
     if original_clean_image_path and original_clean_image_path.exists():
-        images.append(_b64_image(original_clean_image_path))
+        images.append(original_clean_image_path)
     for rp in render_paths:
         if rp and Path(rp).exists():
-            images.append(_b64_image(rp))
+            images.append(Path(rp))
 
     if not images:
         v = dict(SOFT_FAIL_VERDICT)
         v["geometry_defects"] = ["no_images_available"]
         return v
 
-    raw = _call_openrouter(images, sim_report)
+    # Build a single composite image (models that accept only 1 image).
+    composite_bytes = _composite_image(images)
+    if not composite_bytes:
+        v = dict(SOFT_FAIL_VERDICT)
+        v["geometry_defects"] = ["composite_image_failed"]
+        return v
+    composite_b64 = "data:image/png;base64," + base64.b64encode(composite_bytes).decode("ascii")
+    # Persist composite for debugging / frontend.
+    (run_dir / "composite.png").write_bytes(composite_bytes)
+
+    raw = _call_openrouter(composite_b64, sim_report)
     if raw is None:
         return dict(SOFT_FAIL_VERDICT)
 
