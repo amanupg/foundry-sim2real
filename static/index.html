@@ -93,8 +93,20 @@
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+window.THREE = THREE;
+window.GLTFLoader = GLTFLoader;
+</script>
 <script>
 const STAGES = ["preprocess","generate_mesh","process_mesh","estimate_physics","make_collision","export_urdf","validate_in_sim","critique"];
 let statusData = {};
@@ -194,7 +206,7 @@ function loadViewer(url){
   const light = new THREE.HemisphereLight(0xffffff, 0x222222, 1.2); scene.add(light);
   const dir = new THREE.DirectionalLight(0xffffff, 1.0); dir.position.set(1,2,3); scene.add(dir);
   const grid = new THREE.GridHelper(1, 10, 0x303a4d, 0x202632); scene.add(grid);
-  const loader = new THREE.GLTFLoader();
+  const loader = new GLTFLoader();
   loader.load(url, (gltf)=>{
     meshObj = gltf.scene;
     // Center & scale to fit.
