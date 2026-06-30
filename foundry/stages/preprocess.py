@@ -14,17 +14,33 @@ from PIL import Image
 log = logging.getLogger("foundry.preprocess")
 
 
+def _load_image(image_path: Path) -> Image.Image:
+    """Open an image, converting HEIC/HEIF if needed."""
+    if image_path.suffix.lower() in (".heic", ".heif", ".hif"):
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            raise RuntimeError(
+                "HEIC input requires pillow-heif: pip install pillow-heif"
+            )
+    return Image.open(image_path)
+
+
 def _remove_bg(image_path: Path) -> Image.Image:
     """Remove background with rembg. Returns RGBA image."""
     try:
         from rembg import remove
-        data = image_path.read_bytes()
-        out = remove(data)
+        # rembg's onnx session may not decode HEIC; normalize to PNG bytes first.
+        img = _load_image(image_path)
         import io
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, format="PNG")
+        out = remove(buf.getvalue())
         return Image.open(io.BytesIO(out)).convert("RGBA")
     except Exception as e:
         log.warning("rembg failed (%s); falling back to plain copy", e)
-        return Image.open(image_path).convert("RGBA")
+        return _load_image(image_path).convert("RGBA")
 
 
 def _center_pad(img: Image.Image, bg=(235, 235, 235, 255), pad_frac: float = 0.1) -> Image.Image:

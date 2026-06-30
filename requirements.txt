@@ -13,6 +13,7 @@ pydantic==2.10.4
 numpy==2.3.5
 trimesh==4.5.3
 pillow==12.1.0
+pillow-heif==0.18.0
 rembg==2.0.76
 onnxruntime==1.21.0
 # coacd approximate convex decomposition (falls back to convex hull on failure)
