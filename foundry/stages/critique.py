@@ -141,32 +141,42 @@ def _call_openrouter(composite_b64: str, sim_report: dict) -> str | None:
     ]
 
     for model in (VLM_MODEL, VLM_FALLBACK_MODEL):
-        try:
-            log.info("critique: calling OpenRouter model %s", model)
-            resp = httpx.post(
-                OPENROUTER_BASE,
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": content}],
-                    "max_tokens": 600,
-                    "temperature": 0.2,
-                },
-                timeout=120.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if "choices" not in data or not data["choices"]:
-                log.warning("critique: %s returned no choices: %s", model, str(data)[:400])
-                continue
-            text = data["choices"][0]["message"]["content"]
-            log.info("critique: %s responded (%d chars)", model, len(text or ""))
-            return text
-        except Exception as e:
-            log.warning("critique: model %s failed (%s)", model, _short(str(e)))
+        for attempt in range(3):
+            try:
+                log.info("critique: calling OpenRouter model %s (try %d)", model, attempt + 1)
+                resp = httpx.post(
+                    OPENROUTER_BASE,
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": content}],
+                        "max_tokens": 600,
+                        "temperature": 0.2,
+                    },
+                    timeout=120.0,
+                )
+                if resp.status_code == 429:
+                    wait = 10 * (attempt + 1)
+                    log.warning("critique: %s rate limited; waiting %ds", model, wait)
+                    import time as _t
+                    _t.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                if "choices" not in data or not data["choices"]:
+                    log.warning("critique: %s returned no choices: %s", model, str(data)[:400])
+                    break  # try fallback model, not retry
+                text = data["choices"][0]["message"]["content"]
+                log.info("critique: %s responded (%d chars)", model, len(text or ""))
+                return text
+            except Exception as e:
+                log.warning("critique: model %s try %d failed (%s)", model, attempt + 1, _short(str(e)))
+                if attempt < 2:
+                    import time as _t
+                    _t.sleep(5 * (attempt + 1))
     return None
 
 
