@@ -11,8 +11,16 @@ import time
 from pathlib import Path
 
 from . import stages
-from .config import DEFAULT_DENSITY_KG_M3, DEFAULT_REAL_DIM_M, MAX_ATTEMPTS
+from .config import DEFAULT_DENSITY_KG_M3, DEFAULT_REAL_DIM_M, MAX_ATTEMPTS, ROOT
 from .logging_utils import get_logger, make_run_dir, write_json
+
+
+def _rel(p: Path) -> str:
+    """Path relative to repo ROOT, for URL serving under /runs/..."""
+    try:
+        return str(Path(p).relative_to(ROOT))
+    except ValueError:
+        return str(p)
 
 log = logging.getLogger("foundry.controller")
 
@@ -91,16 +99,16 @@ def run_pipeline(image_path: Path,
             )
 
             attempt.update({
-                "raw_mesh": str(raw_mesh.relative_to(run_dir.parent)),
-                "processed": str(processed.relative_to(run_dir.parent)),
+                "raw_mesh": _rel(raw_mesh),
+                "processed": _rel(processed),
                 "mesh_report": mesh_report,
                 "mass": mass,
                 "inertia": inertia.tolist(),
                 "scale_note": scale_note,
                 "sim_report": sim_report,
-                "renders": [str(r.relative_to(run_dir.parent)) for r in renders],
-                "urdf": str(urdf_path.relative_to(run_dir.parent)),
-                "zip": str(zip_path.relative_to(run_dir.parent)),
+                "renders": [_rel(r) for r in renders],
+                "urdf": _rel(urdf_path),
+                "zip": _rel(zip_path),
                 "verdict": verdict,
                 "reasoning": _reasoning(attempt_num, verdict, attempts),
             })
