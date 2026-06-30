@@ -1,0 +1,65 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Project artifacts (generated per-run)
+runs/
+runs_tmp/
+assets_pack/
+renders/
+*.glb
+*.gltf
+*.obj
+*.stl
+*.ply
+*.urdf
+*.zip
+*.png
+*.jpg
+*.jpeg
+*.webp
+!samples/*.png
+!samples/*.jpg
+!samples/*.jpeg
+!static/**/*.png
+
+# PyBullet / trimesh logs
+*.log
+pybullet_data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
